@@ -5,6 +5,8 @@ use std::io::{BufRead, BufReader, Write};
 use chrono::prelude::*;
 use plotters::prelude::*;
 
+const DAY_SLICES: usize = 48;
+
 struct Pull {
     special: bool,
     win_fifty: bool,
@@ -66,11 +68,9 @@ fn main() {
         }
     }
 
-    let mut time_stats = [Avg { avg: 0.0, win_chance: 0.0, special_count: 0, count: 0 }; 49];
+    let mut time_stats = [Avg { avg: 0.0, win_chance: 0.0, special_count: 0, count: 0 }; DAY_SLICES + 1];
     let mut out = File::create("D:\\result.txt").unwrap();
     for entry in array.iter() {
-        // out.write(format!("{},{},{}\n", entry.special, entry.pities, entry.time.to_string()).as_ref()).expect("TODO: panic message");
-
         let time = entry.time.time();
         let index: usize = (2 * time.hour() + if time.minute() >= 30 { 1 } else { 0 }) as usize;
         let mut avg_ref: &mut Avg = time_stats.get_mut(index).unwrap();
@@ -83,7 +83,7 @@ fn main() {
         }
     }
 
-    time_stats[48] = time_stats[0];
+    time_stats[DAY_SLICES] = time_stats[0];
 
     let root_area = BitMapBackend::new("D:\\test.png", (1000, 500)).into_drawing_area();
     root_area.fill(&WHITE).unwrap();
@@ -111,25 +111,34 @@ fn main() {
         .y_desc("Chance of winning fifty")
         .draw().expect("TODO: panic message");
 
+    /*
     ctx.draw_series(
-        LineSeries::new((0..49).zip(time_stats.iter()).map(|(x, y)| {
-            ((x as f64) / 2.0, y.avg)
+        LineSeries::new((0..DAY_SLICES + 1).zip(time_stats.iter()).map(|(x, y)| {
+            ((x as f64) * 24.0 / (DAY_SLICES as f64), y.avg)
         }), &BLUE)
     ).unwrap();
+    */
+
+    ctx.draw_series((0..DAY_SLICES).zip(time_stats.iter()).map(|(x, y)| {
+        let x0 = (x as f64) * 24.0 / (DAY_SLICES as f64);
+        let x1 = x0 + 24.0 / (DAY_SLICES as f64);
+        let mut bar = Rectangle::new([(x0, 0.0), (x1, y.avg)], BLUE.filled());
+        bar.set_margin(0, 0, 2, 2);
+        bar
+    })).unwrap();
 
     ctx.draw_secondary_series(
-        LineSeries::new((0..49).zip(time_stats.iter()).map(|(x, y)| {
-            ((x as f64) / 2.0, y.win_chance)
+        LineSeries::new((0..DAY_SLICES + 1).zip(time_stats.iter()).map(|(x, y)| {
+            ((x as f64) * 24.0 / (DAY_SLICES as f64), y.win_chance)
         }), &RED)
     ).unwrap();
 
     for (i, el) in time_stats.iter().enumerate() {
-        let hour = i / 2;
-        let minute_start = (i % 2) * 30;
-        let minute_end = (i % 2) * 30 + 30;
+        let start_minute = i * (24 * 60 / DAY_SLICES);
+        let end_minute = (i + 1) * (24 * 60 / DAY_SLICES);
         let str = format!("{0:>0width$}:{1:>0width$} to {2:>0width$}:{3:>0width$} q={4} avg = {5}\n",
-                          hour, minute_start,
-                          if minute_end == 60 { hour + 1 } else { hour }, minute_end % 60,
+                          start_minute / 60, start_minute % 60,
+                          end_minute / 60, end_minute % 60,
                           el.count, el.avg, width = 2
         );
         out.write(str.as_bytes()).expect("TODO: panic message");
